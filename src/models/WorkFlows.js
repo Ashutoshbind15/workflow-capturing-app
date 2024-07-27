@@ -8,7 +8,11 @@ const WorkFlowsSchema = new mongoose.Schema({
       url: String,
     },
   ],
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
 });
 
 export const WorkFlow =
-  mongoose.models?.WorkFlow || mongoose.model("WorkFlows", WorkFlowsSchema);
+  mongoose.models?.WorkFlow || mongoose.model("WorkFlow", WorkFlowsSchema);

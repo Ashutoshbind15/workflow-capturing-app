@@ -1,22 +1,28 @@
 "use server";
 
 import { cookies } from "next/headers";
-import jwt from "jsonwebtoken";
+import { SignJWT, jwtVerify } from "jose";
 import { redirect } from "next/navigation";
-const JWT_SECRET = process.env.JWT_SECRET || "sec";
+
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "sec");
 
 import bcrypt from "bcryptjs";
 import connectDB from "./db";
 import { User } from "@/models/User";
+import { NextResponse } from "next/server";
 
-export async function signToken(payload) {
-  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
-  return token;
+export async function signToken(payload, expiresIn = "1h") {
+  return await new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(expiresIn)
+    .sign(JWT_SECRET);
 }
 
 export async function verifyToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    return payload;
   } catch (error) {
     return null;
   }
@@ -42,14 +48,22 @@ export async function loginAction(formData) {
     return redirect("/auth/login");
   }
 
-  const token = await signToken({
-    user: {
-      sub: user._id,
-      email: user.email,
+  const token = await signToken(
+    {
+      user: {
+        sub: user._id,
+        email: user.email,
+      },
     },
-  });
+    "1h"
+  );
 
-  cookies().set("token", token, { httpOnly: true });
+  const expiresIn = 30 * 1000;
+
+  cookies().set("token", token, {
+    httpOnly: true,
+    expires: new Date(Date.now() + expiresIn),
+  });
   redirect("/");
 }
 
@@ -79,7 +93,35 @@ export async function logout() {
 
 export async function getToken() {
   const token = cookies().get("token")?.value;
-  console.log("gt", token);
   if (!token) return null;
   return verifyToken(token);
+}
+
+export async function updateToken(req) {
+  const token = await getToken();
+
+  if (!token) return;
+
+  const newToken = await signToken(
+    {
+      user: {
+        sub: token.user.sub,
+        email: token.user.email,
+      },
+    },
+    "1h"
+  );
+
+  const expiresIn = 60 * 60 * 60 * 1000;
+
+  const res = NextResponse.next();
+
+  res.cookies.set({
+    name: "token",
+    value: newToken,
+    httpOnly: true,
+    expires: new Date(Date.now() + expiresIn),
+  });
+
+  return res;
 }
